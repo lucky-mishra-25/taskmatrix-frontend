@@ -1,176 +1,102 @@
-const express = require("express");
-const cors = require("cors");
-const dotenv = require("dotenv");
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-const mongoose = require("mongoose");
-const morgan = require("morgan");
+import React from "react";
 
-dotenv.config();
+function Premium() {
+  const BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    "https://taskmatrix-backend-wo86.onrender.com";
 
-const app = express();
+  const loadRazorpay = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) return resolve(true);
 
-// =======================
-// SECURITY HEADER
-// =======================
-app.disable("x-powered-by");
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
 
-// =======================
-// ENV CHECK
-// =======================
-if (!process.env.MONGO_URI) {
-  console.error("❌ MONGO_URI missing in .env");
-  process.exit(1);
-}
+  const handlePayment = async () => {
+    try {
+      const token = localStorage.getItem("token");
 
-if (!process.env.JWT_SECRET) {
-  console.error("❌ JWT_SECRET missing in .env");
-  process.exit(1);
-}
-
-// =======================
-// DATABASE CONNECTION
-// =======================
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB Connected"))
-  .catch((err) => {
-    console.error("❌ MongoDB Connection Failed:", err.message);
-    process.exit(1);
-  });
-
-// =======================
-// MIDDLEWARE
-// =======================
-app.use(helmet());
-app.use(express.json());
-
-// IMPORTANT FOR RENDER / PROXY
-app.set("trust proxy", 1);
-
-// =======================
-// CORS (SAFE VERSION)
-// =======================
-const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL]
-  : [];
-
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      if (
-        allowedOrigins.length === 0 ||
-        allowedOrigins.includes(origin)
-      ) {
-        return callback(null, true);
+      if (!token) {
+        alert("Please login first");
+        return;
       }
 
-      console.log("❌ Blocked CORS:", origin);
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
-  })
-);
+      const loaded = await loadRazorpay();
 
-// =======================
-// LOGGING
-// =======================
-if (process.env.NODE_ENV === "development") {
-  app.use(morgan("dev"));
+      if (!loaded) {
+        alert("Razorpay SDK failed to load");
+        return;
+      }
+
+      const res = await fetch(`${BASE_URL}/api/payment/create-order`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ amount: 50000 }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        alert("Order creation failed");
+        return;
+      }
+
+      const options = {
+        key: data.key,
+        amount: data.order.amount,
+        currency: "INR",
+        name: "TaskMatrix",
+        description: "Premium Upgrade",
+        order_id: data.order.id,
+
+        handler: function (response) {
+          alert("Payment Successful ✅");
+
+          fetch(`${BASE_URL}/api/user/upgrade`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          });
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+
+    } catch (err) {
+      console.error(err);
+      alert("Payment failed");
+    }
+  };
+
+  return (
+    <div style={{ textAlign: "center", marginTop: "50px" }}>
+      <h2>Upgrade to Premium 🚀</h2>
+
+      <button
+        onClick={handlePayment}
+        style={{
+          padding: "10px 20px",
+          background: "gold",
+          border: "none",
+          cursor: "pointer",
+          fontSize: "16px",
+        }}
+      >
+        Pay ₹500
+      </button>
+    </div>
+  );
 }
 
-// =======================
-// RATE LIMITERS
-// =======================
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: {
-    success: false,
-    message: "Too many login attempts. Try again later.",
-  },
-});
-
-const aiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000,
-  max: 30,
-  message: {
-    success: false,
-    message: "Too many requests. Please slow down.",
-  },
-});
-
-// =======================
-// ROUTES IMPORTS
-// =======================
-const authRoutes = require("./routes/authRoutes");
-const taskRoutes = require("./routes/taskRoutes");
-const aiRoutes = require("./routes/aiRoutes");
-const paymentRoutes = require("./routes/payment");
-
-// =======================
-// DEBUG LOGGER
-// =======================
-app.use((req, res, next) => {
-  console.log("➡️", req.method, req.url);
-  next();
-});
-
-// =======================
-// ROUTES
-// =======================
-
-// AUTH
-app.use("/api/auth/login", loginLimiter);
-app.use("/api/auth", authRoutes);
-
-// TASKS
-app.use("/api/tasks", taskRoutes);
-
-// AI
-app.use("/api/ai", aiLimiter, aiRoutes);
-
-// PAYMENT
-app.use("/api/payment", paymentRoutes);
-
-// =======================
-// HEALTH CHECK
-// =======================
-app.get("/", (req, res) => {
-  res.send("🚀 TaskMatrix Backend API Running...");
-});
-
-// =======================
-// 404 HANDLER
-// =======================
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found",
-    path: req.originalUrl,
-  });
-});
-
-// =======================
-// GLOBAL ERROR HANDLER
-// =======================
-app.use((err, req, res, next) => {
-  console.error("❌ Error:", err.message);
-
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || "Internal Server Error",
-  });
-});
-
-// =======================
-// START SERVER
-// =======================
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+export default Premium;
