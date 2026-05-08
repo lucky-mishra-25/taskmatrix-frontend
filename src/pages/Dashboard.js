@@ -6,7 +6,9 @@ function Dashboard() {
   const [loading, setLoading] = useState(false);
 
   const token = localStorage.getItem("token");
-  const BASE_URL = "https://taskmatrix-backend-wo86.onrender.com";
+
+  // ✅ ENV URL
+  const BASE_URL = process.env.REACT_APP_API_URL;
 
   // =========================
   // REDIRECT IF NOT LOGGED IN
@@ -22,6 +24,7 @@ function Dashboard() {
   // =========================
   const fetchTasks = useCallback(async () => {
     setLoading(true);
+
     try {
       const res = await fetch(`${BASE_URL}/api/tasks`, {
         headers: {
@@ -31,8 +34,12 @@ function Dashboard() {
 
       const data = await res.json();
 
+      console.log("TASK DATA:", data);
+
       if (Array.isArray(data)) {
         setTasks(data);
+      } else if (data.tasks) {
+        setTasks(data.tasks);
       } else {
         setTasks([]);
       }
@@ -40,8 +47,9 @@ function Dashboard() {
       console.error(err);
       setTasks([]);
     }
+
     setLoading(false);
-  }, [token]);
+  }, [BASE_URL, token]);
 
   useEffect(() => {
     fetchTasks();
@@ -64,7 +72,11 @@ function Dashboard() {
       });
 
       const newTask = await res.json();
-      setTasks((prev) => [...prev, newTask]);
+
+      console.log("NEW TASK:", newTask);
+
+      fetchTasks();
+
       setInput("");
     } catch (err) {
       console.error(err);
@@ -76,10 +88,11 @@ function Dashboard() {
   // =========================
   const editTask = async (id) => {
     const newTitle = prompt("Edit task:");
+
     if (!newTitle) return;
 
     try {
-      const res = await fetch(`${BASE_URL}/api/tasks/${id}`, {
+      await fetch(`${BASE_URL}/api/tasks/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -88,11 +101,7 @@ function Dashboard() {
         body: JSON.stringify({ title: newTitle }),
       });
 
-      const updated = await res.json();
-
-      setTasks((prev) =>
-        prev.map((task) => (task._id === id ? updated : task))
-      );
+      fetchTasks();
     } catch (err) {
       console.error(err);
     }
@@ -103,20 +112,18 @@ function Dashboard() {
   // =========================
   const toggleComplete = async (task) => {
     try {
-      const res = await fetch(`${BASE_URL}/api/tasks/${task._id}`, {
+      await fetch(`${BASE_URL}/api/tasks/${task._id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ completed: !task.completed }),
+        body: JSON.stringify({
+          completed: !task.completed,
+        }),
       });
 
-      const updated = await res.json();
-
-      setTasks((prev) =>
-        prev.map((t) => (t._id === task._id ? updated : t))
-      );
+      fetchTasks();
     } catch (err) {
       console.error(err);
     }
@@ -134,7 +141,7 @@ function Dashboard() {
         },
       });
 
-      setTasks((prev) => prev.filter((task) => task._id !== id));
+      fetchTasks();
     } catch (err) {
       console.error(err);
     }
@@ -155,6 +162,8 @@ function Dashboard() {
 
       const data = await res.json();
 
+      console.log("AI DATA:", data);
+
       if (data.success && Array.isArray(data.tasks)) {
         for (let taskText of data.tasks) {
           await fetch(`${BASE_URL}/api/tasks`, {
@@ -163,7 +172,9 @@ function Dashboard() {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ title: taskText }),
+            body: JSON.stringify({
+              title: taskText,
+            }),
           });
         }
 
@@ -181,7 +192,9 @@ function Dashboard() {
   // =========================
   const logout = () => {
     localStorage.removeItem("token");
-    window.location.href = "/login";
+
+    // ✅ FIXED
+    window.location.href = "/";
   };
 
   // =========================
@@ -209,16 +222,22 @@ function Dashboard() {
           placeholder="Enter task..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          style={{ padding: "10px", marginRight: "10px", width: "60%" }}
+          style={{
+            padding: "10px",
+            marginRight: "10px",
+            width: "60%",
+          }}
         />
 
         <button onClick={addTask}>Add</button>
 
-        <button onClick={generateTasks} style={{ marginLeft: "10px" }}>
+        <button
+          onClick={generateTasks}
+          style={{ marginLeft: "10px" }}
+        >
           AI Tasks
         </button>
 
-        {/* ⭐ UPGRADE BUTTON */}
         <button
           onClick={() => (window.location.href = "/upgrade")}
           style={{
@@ -237,7 +256,7 @@ function Dashboard() {
       {/* LOADING */}
       {loading && <p>Loading...</p>}
 
-      {/* TASK LIST */}
+      {/* TASKS */}
       <div style={{ marginTop: "20px" }}>
         {Array.isArray(tasks) && tasks.length > 0 ? (
           tasks.map((task) => (
@@ -256,7 +275,9 @@ function Dashboard() {
               <span
                 onClick={() => toggleComplete(task)}
                 style={{
-                  textDecoration: task.completed ? "line-through" : "none",
+                  textDecoration: task.completed
+                    ? "line-through"
+                    : "none",
                   cursor: "pointer",
                 }}
               >
@@ -264,7 +285,10 @@ function Dashboard() {
               </span>
 
               <div>
-                <button onClick={() => editTask(task._id)}>✏️</button>
+                <button onClick={() => editTask(task._id)}>
+                  ✏️
+                </button>
+
                 <button
                   onClick={() => deleteTask(task._id)}
                   style={{ marginLeft: "10px" }}
