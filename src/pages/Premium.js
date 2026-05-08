@@ -1,14 +1,51 @@
-import React from "react";
+import React, { useState } from "react";
 
 function Premium() {
-  const BASE_URL = "https://taskmatrix-backend-wo86.onrender.com";
+  const BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    "https://taskmatrix-backend-wo86.onrender.com";
 
+  const [loading, setLoading] = useState(false);
+
+  // =========================
+  // LOAD RAZORPAY SCRIPT
+  // =========================
+  const loadRazorpay = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  // =========================
+  // PAYMENT HANDLER
+  // =========================
   const handlePayment = async () => {
     try {
+      setLoading(true);
+
       const token = localStorage.getItem("token");
 
       if (!token) {
         alert("Please login first");
+        setLoading(false);
+        return;
+      }
+
+      // Load Razorpay SDK
+      const isLoaded = await loadRazorpay();
+
+      if (!isLoaded) {
+        alert("Failed to load Razorpay SDK");
+        setLoading(false);
         return;
       }
 
@@ -24,17 +61,16 @@ function Premium() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            amount: 50000, // ₹500
+            amount: 50000, // ₹500 in paise
           }),
         }
       );
 
       const data = await res.json();
 
-      console.log("PAYMENT RESPONSE:", data);
-
-      if (!data.success) {
+      if (!res.ok || !data.success) {
         alert(data.message || "Order creation failed");
+        setLoading(false);
         return;
       }
 
@@ -50,12 +86,10 @@ function Premium() {
         order_id: data.order.id,
 
         handler: async function (response) {
-          alert("Payment Successful ✅");
-
-          console.log("Payment Response:", response);
-
-          // OPTIONAL: VERIFY PAYMENT
           try {
+            alert("Payment Successful ✅");
+
+            // Upgrade user
             await fetch(`${BASE_URL}/api/user/upgrade`, {
               method: "POST",
               headers: {
@@ -63,66 +97,79 @@ function Premium() {
                 Authorization: `Bearer ${token}`,
               },
             });
-          } catch (err) {
-            console.error(err);
-          }
 
-          window.location.href = "/success";
+            window.location.href = "/success";
+          } catch (err) {
+            console.error("Upgrade Error:", err);
+          }
+        },
+
+        prefill: {
+          name: "User",
+          email: "",
+          contact: "",
         },
 
         theme: {
-          color: "#3399cc",
+          color: "#FFD700",
         },
       };
 
-      // =========================
-      // CHECK SDK
-      // =========================
-      if (!window.Razorpay) {
-        alert("Razorpay SDK not loaded");
-        return;
-      }
-
-      // =========================
-      // OPEN PAYMENT WINDOW
-      // =========================
       const rzp = new window.Razorpay(options);
-      rzp.open();
 
+      rzp.on("payment.failed", function (response) {
+        console.error("Payment Failed:", response.error);
+        alert("Payment failed ❌ Try again");
+      });
+
+      rzp.open();
     } catch (err) {
       console.error("Payment Error:", err);
-      alert("Payment failed");
+      alert("Something went wrong");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div
-      style={{
-        textAlign: "center",
-        marginTop: "100px",
-        fontFamily: "Arial",
-      }}
-    >
+    <div style={styles.container}>
       <h2>Upgrade to Premium 🚀</h2>
 
-      <p>Unlock premium features for ₹500</p>
+      <p>Unlock all premium features for ₹500</p>
 
       <button
         onClick={handlePayment}
+        disabled={loading}
         style={{
-          padding: "12px 25px",
-          background: "gold",
-          border: "none",
-          cursor: "pointer",
-          fontSize: "18px",
-          borderRadius: "8px",
-          fontWeight: "bold",
+          ...styles.button,
+          opacity: loading ? 0.6 : 1,
+          cursor: loading ? "not-allowed" : "pointer",
         }}
       >
-        Pay ₹500
+        {loading ? "Processing..." : "Pay ₹500"}
       </button>
     </div>
   );
 }
+
+// =========================
+// STYLES (Mobile Friendly)
+// =========================
+const styles = {
+  container: {
+    textAlign: "center",
+    marginTop: "100px",
+    fontFamily: "Arial",
+    padding: "20px",
+  },
+  button: {
+    padding: "12px 25px",
+    background: "gold",
+    border: "none",
+    fontSize: "18px",
+    borderRadius: "8px",
+    fontWeight: "bold",
+  },
+};
 
 export default Premium;
