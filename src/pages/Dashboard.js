@@ -7,8 +7,10 @@ function Dashboard() {
 
   const token = localStorage.getItem("token");
 
-  // ✅ ENV URL
-  const BASE_URL = process.env.REACT_APP_API_URL;
+  // ✅ Production Backend URL
+  const BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    "https://taskmatrix-backend-wo86.onrender.com";
 
   // =========================
   // REDIRECT IF NOT LOGGED IN
@@ -36,15 +38,16 @@ function Dashboard() {
 
       console.log("TASK DATA:", data);
 
+      // ✅ Handle different backend responses safely
       if (Array.isArray(data)) {
         setTasks(data);
-      } else if (data.tasks) {
+      } else if (Array.isArray(data.tasks)) {
         setTasks(data.tasks);
       } else {
         setTasks([]);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Fetch Tasks Error:", err);
       setTasks([]);
     }
 
@@ -68,18 +71,20 @@ function Dashboard() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ title: input }),
+        body: JSON.stringify({
+          title: input,
+        }),
       });
 
-      const newTask = await res.json();
+      const data = await res.json();
 
-      console.log("NEW TASK:", newTask);
-
-      fetchTasks();
+      console.log("ADD TASK:", data);
 
       setInput("");
+
+      fetchTasks();
     } catch (err) {
-      console.error(err);
+      console.error("Add Task Error:", err);
     }
   };
 
@@ -89,21 +94,27 @@ function Dashboard() {
   const editTask = async (id) => {
     const newTitle = prompt("Edit task:");
 
-    if (!newTitle) return;
+    if (!newTitle || !newTitle.trim()) return;
 
     try {
-      await fetch(`${BASE_URL}/api/tasks/${id}`, {
+      const res = await fetch(`${BASE_URL}/api/tasks/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ title: newTitle }),
+        body: JSON.stringify({
+          title: newTitle,
+        }),
       });
+
+      const data = await res.json();
+
+      console.log("EDIT TASK:", data);
 
       fetchTasks();
     } catch (err) {
-      console.error(err);
+      console.error("Edit Task Error:", err);
     }
   };
 
@@ -112,7 +123,7 @@ function Dashboard() {
   // =========================
   const toggleComplete = async (task) => {
     try {
-      await fetch(`${BASE_URL}/api/tasks/${task._id}`, {
+      const res = await fetch(`${BASE_URL}/api/tasks/${task._id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -123,9 +134,13 @@ function Dashboard() {
         }),
       });
 
+      const data = await res.json();
+
+      console.log("TOGGLE TASK:", data);
+
       fetchTasks();
     } catch (err) {
-      console.error(err);
+      console.error("Toggle Error:", err);
     }
   };
 
@@ -134,16 +149,20 @@ function Dashboard() {
   // =========================
   const deleteTask = async (id) => {
     try {
-      await fetch(`${BASE_URL}/api/tasks/${id}`, {
+      const res = await fetch(`${BASE_URL}/api/tasks/${id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
+      const data = await res.json();
+
+      console.log("DELETE TASK:", data);
+
       fetchTasks();
     } catch (err) {
-      console.error(err);
+      console.error("Delete Error:", err);
     }
   };
 
@@ -183,7 +202,7 @@ function Dashboard() {
         alert("AI failed to generate tasks");
       }
     } catch (err) {
-      console.error(err);
+      console.error("AI Error:", err);
     }
   };
 
@@ -193,7 +212,6 @@ function Dashboard() {
   const logout = () => {
     localStorage.removeItem("token");
 
-    // ✅ FIXED
     window.location.href = "/";
   };
 
@@ -203,7 +221,7 @@ function Dashboard() {
   return (
     <div
       style={{
-        maxWidth: "600px",
+        maxWidth: "700px",
         margin: "auto",
         padding: "20px",
         fontFamily: "Arial",
@@ -211,12 +229,19 @@ function Dashboard() {
     >
       <h2>Task Dashboard 🚀</h2>
 
-      <button onClick={logout} style={{ float: "right" }}>
+      <button
+        onClick={logout}
+        style={{
+          float: "right",
+          padding: "8px 15px",
+          cursor: "pointer",
+        }}
+      >
         Logout
       </button>
 
-      {/* INPUT */}
-      <div style={{ marginTop: "20px" }}>
+      {/* INPUT SECTION */}
+      <div style={{ marginTop: "30px" }}>
         <input
           type="text"
           placeholder="Enter task..."
@@ -224,8 +249,8 @@ function Dashboard() {
           onChange={(e) => setInput(e.target.value)}
           style={{
             padding: "10px",
-            marginRight: "10px",
             width: "60%",
+            marginRight: "10px",
           }}
         />
 
@@ -256,22 +281,23 @@ function Dashboard() {
       {/* LOADING */}
       {loading && <p>Loading...</p>}
 
-      {/* TASKS */}
-      <div style={{ marginTop: "20px" }}>
+      {/* TASK LIST */}
+      <div style={{ marginTop: "30px" }}>
         {Array.isArray(tasks) && tasks.length > 0 ? (
           tasks.map((task) => (
             <div
               key={task._id}
               style={{
-                padding: "12px",
-                borderRadius: "8px",
+                padding: "15px",
+                borderRadius: "10px",
                 background: "#f4f4f4",
-                marginBottom: "10px",
+                marginBottom: "12px",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
               }}
             >
+              {/* TASK TITLE */}
               <span
                 onClick={() => toggleComplete(task)}
                 style={{
@@ -279,19 +305,29 @@ function Dashboard() {
                     ? "line-through"
                     : "none",
                   cursor: "pointer",
+                  fontSize: "16px",
                 }}
               >
-                {task.title}
+                {task.title || "Untitled Task"}
               </span>
 
+              {/* ACTION BUTTONS */}
               <div>
-                <button onClick={() => editTask(task._id)}>
+                <button
+                  onClick={() => editTask(task._id)}
+                  style={{
+                    marginRight: "10px",
+                    cursor: "pointer",
+                  }}
+                >
                   ✏️
                 </button>
 
                 <button
                   onClick={() => deleteTask(task._id)}
-                  style={{ marginLeft: "10px" }}
+                  style={{
+                    cursor: "pointer",
+                  }}
                 >
                   ❌
                 </button>
